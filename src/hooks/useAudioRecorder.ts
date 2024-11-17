@@ -9,7 +9,6 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
     chunks: []
   });
 
-  // 브라우저 환경 체크
   const checkEnvironment = () => {
     const userAgent = navigator.userAgent.toLowerCase();
     const isIOS = /iphone|ipad|ipod/.test(userAgent);
@@ -17,11 +16,13 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
     return { isIOS, isSafari };
   };
 
-  // 오디오 설정 - iOS를 위해 최소한의 설정만 사용
   const getAudioConstraints = () => {
     return {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
       channelCount: 1,
-      sampleRate: 44100 // iOS 기본값
+      sampleRate: 16000
     };
   };
 
@@ -43,17 +44,11 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
 
       callback("마이크 권한 획득 성공!");
 
-      // MIME 타입 설정 (iOS는 wav 사용)
-      const { isIOS: isIOSDevice } = checkEnvironment();
-      const mimeType = isIOSDevice ? "audio/wav" : "audio/webm";
-
+      // 원래 코드의 MIME 타입 처리로 복귀
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
       callback(`선택된 오디오 형식: ${mimeType}`);
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : "audio/wav",
-        audioBitsPerSecond: isIOSDevice ? 64000 : 128000
-      });
-
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       const chunks: Blob[] = [];
 
       mediaRecorder.ondataavailable = (e) => {
@@ -71,8 +66,7 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
             return;
           }
 
-          const fileExtension = mimeType.includes("wav") ? "wav" : "webm";
-          const audioFile = new File([audioBlob], `audio.${fileExtension}`, {
+          const audioFile = new File([audioBlob], "audio.webm", {
             type: mimeType
           });
 
@@ -92,7 +86,7 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
         }
       };
 
-      mediaRecorder.start(500); // 더 작은 타임슬라이스 사용
+      mediaRecorder.start(1000);
       callback("녹음이 시작되었습니다.");
 
       setRecorderState({
@@ -122,7 +116,6 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
     }
   };
 
-  // cleanup
   useEffect(() => {
     return () => {
       if (recorderState.mediaRecorder) {
