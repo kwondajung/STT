@@ -45,7 +45,11 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
       callback("마이크 권한 획득 성공!");
 
       // 원래 코드의 MIME 타입 처리로 복귀
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "audio/ogg";
       callback(`선택된 오디오 형식: ${mimeType}`);
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
