@@ -131,14 +131,6 @@ export const useAudioRecorder = () => {
   const recorderRef = useRef<RecordRTC | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // const checkEnvironment = () => {
-  //   if (typeof window === "undefined") return { isIOS: false, isSafari: false };
-  //   const userAgent = window.navigator.userAgent.toLowerCase();
-  //   const isIOS = /iphone|ipad|ipod/.test(userAgent);
-  //   const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
-  //   return { isIOS, isSafari };
-  // };
-
   const startRecording = async () => {
     try {
       if (typeof window === "undefined") return;
