@@ -1,7 +1,6 @@
-import { AudioRecorderState } from "@/app/types/chatBotType/chatBotType";
-import { convertSpeechToText } from "@/utils/chatbot/chatBotApi";
 import { useState, useEffect, useRef } from "react";
-import RecordRTC, { StereoAudioRecorder } from "recordrtc";
+import { convertSpeechToText } from "@/utils/chatbot/chatBotApi";
+import RecordRTC from "recordrtc";
 
 export const useAudioRecorder = (callback: (text: string) => void) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -9,40 +8,36 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
   const streamRef = useRef<MediaStream | null>(null);
 
   const checkEnvironment = () => {
-    const userAgent = navigator.userAgent.toLowerCase();
+    if (typeof window === "undefined") return { isIOS: false, isSafari: false };
+    const userAgent = window.navigator.userAgent.toLowerCase();
     const isIOS = /iphone|ipad|ipod/.test(userAgent);
     const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
     return { isIOS, isSafari };
   };
 
-  const getAudioConstraints = () => {
-    return {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 16000
-    };
-  };
-
   const startRecording = async () => {
     try {
-      const { isIOS, isSafari } = checkEnvironment();
-      callback(`환경체크: ${isIOS ? "iOS" : "다른 OS"}, ${isSafari ? "Safari" : "다른 브라우저"}`);
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        callback("이 브라우저는 마이크 기능을 지원하지 않습니다.");
+      if (typeof window === "undefined") {
+        callback("브라우저 환경이 아닙니다.");
         return;
       }
 
-      callback("마이크 권한을 요청합니다...");
+      const { isIOS, isSafari } = checkEnvironment();
+      callback(`환경체크: ${isIOS ? "iOS" : "다른 OS"}, ${isSafari ? "Safari" : "다른 브라우저"}`);
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: getAudioConstraints()
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 16000
+        }
       });
 
       streamRef.current = stream;
-      callback("마이크 권한 획득 성공!");
+
+      const { default: RecordRTC, StereoAudioRecorder } = await import("recordrtc");
 
       const recorder = new RecordRTC(stream, {
         type: "audio",
@@ -55,8 +50,8 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
 
       recorderRef.current = recorder;
       recorder.startRecording();
-      callback("녹음이 시작되었습니다.");
       setIsRecording(true);
+      callback("녹음이 시작되었습니다.");
     } catch (error) {
       if (error instanceof Error) {
         callback(`마이크 접근 오류: ${error.message}`);
