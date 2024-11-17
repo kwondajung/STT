@@ -9,61 +9,51 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
     chunks: []
   });
 
-  // 브라우저 및 모바일 환경 체크
+  // 브라우저 환경 체크
   const checkEnvironment = () => {
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    return { isSafari, isIOS };
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isIOS = /iphone|ipad|ipod/.test(userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
+    return { isIOS, isSafari };
   };
 
-  // 오디오 제약조건 설정
+  // 오디오 설정 - iOS를 위해 최소한의 설정만 사용
   const getAudioConstraints = () => {
-    const { isIOS, isSafari } = checkEnvironment();
-
-    const baseConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true
-    };
-
-    // iOS Safari에 대한 특별 처리
-    if (isIOS || isSafari) {
-      return {
-        ...baseConstraints,
-        sampleRate: 44100, // iOS는 보통 44.1kHz를 선호
-        channelCount: 1
-      };
-    }
-
     return {
-      ...baseConstraints,
-      sampleRate: 16000,
-      channelCount: 1
+      channelCount: 1,
+      sampleRate: 44100 // iOS 기본값
     };
   };
 
   const startRecording = async () => {
     try {
       const { isIOS, isSafari } = checkEnvironment();
-      console.log("환경 체크:", { isIOS, isSafari });
+      callback(`환경체크: ${isIOS ? "iOS" : "다른 OS"}, ${isSafari ? "Safari" : "다른 브라우저"}`);
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        callback("이 브라우저는 마이크 기능을 지원하지 않습니다.");
+        return;
+      }
+
+      callback("마이크 권한을 요청합니다...");
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: getAudioConstraints()
       });
 
-      // MIME 타입 설정
-      let mimeType = "audio/webm";
-      if (isIOS || isSafari) {
-        mimeType = "audio/wav";
-      }
+      callback("마이크 권한 획득 성공!");
 
-      // MediaRecorder 옵션 설정
-      const options = {
-        mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : "audio/webm",
-        audioBitsPerSecond: isIOS ? 64000 : 128000 // iOS에서 더 낮은 비트레이트 사용
-      };
+      // MIME 타입 설정 (iOS는 wav 사용)
+      const { isIOS: isIOSDevice } = checkEnvironment();
+      let mimeType = isIOSDevice ? "audio/wav" : "audio/webm";
 
-      const mediaRecorder = new MediaRecorder(stream, options);
+      callback(`선택된 오디오 형식: ${mimeType}`);
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : "audio/wav",
+        audioBitsPerSecond: isIOSDevice ? 64000 : 128000
+      });
+
       const chunks: Blob[] = [];
 
       mediaRecorder.ondataavailable = (e) => {
@@ -74,22 +64,19 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
 
       mediaRecorder.onstop = async () => {
         try {
-          const audioBlob = new Blob(chunks, { type: options.mimeType });
+          const audioBlob = new Blob(chunks, { type: mimeType });
 
-          // 최소 녹음 길이 체크 (500ms)
           if (audioBlob.size < 1000) {
             callback("녹음된 내용이 너무 짧습니다. 다시 시도해주세요.");
             return;
           }
 
-          const audioFile = new File([audioBlob], `audio.${isIOS ? "wav" : "webm"}`, {
-            type: options.mimeType
+          const fileExtension = mimeType.includes("wav") ? "wav" : "webm";
+          const audioFile = new File([audioBlob], `audio.${fileExtension}`, {
+            type: mimeType
           });
 
-          // 디버그용 오디오 재생 체크 (옵션)
-          // const audioUrl = URL.createObjectURL(audioBlob);
-          // const audio = new Audio(audioUrl);
-          // audio.play();
+          callback("음성을 텍스트로 변환 중...");
 
           const text = await convertSpeechToText(audioFile);
 
@@ -99,24 +86,23 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
             callback("음성 인식에 실패했습니다. 다시 시도해주세요.");
           }
         } catch (error) {
-          console.error("음성 변환 실패:", error);
-          callback("음성 변환 중 오류가 발생했습니다. 다시 시도해주세요.");
+          callback(`음성 변환 중 오류: ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
         } finally {
           mediaRecorder.stream.getTracks().forEach((track) => track.stop());
         }
       };
 
-      // 타임슬라이스를 더 작게 설정 (모바일 최적화)
-      mediaRecorder.start(500);
+      mediaRecorder.start(500); // 더 작은 타임슬라이스 사용
+      callback("녹음이 시작되었습니다.");
+
       setRecorderState({
         isRecording: true,
         mediaRecorder,
         chunks
       });
     } catch (error) {
-      console.error("마이크 접근 실패:", error);
-      if (error instanceof DOMException && error.name === "NotAllowedError") {
-        callback("마이크 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용해주세요.");
+      if (error instanceof Error) {
+        callback(`마이크 접근 오류: ${error.message}`);
       } else {
         callback("마이크 접근에 실패했습니다. 브라우저 권한을 확인해주세요.");
       }
@@ -130,12 +116,13 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
 
   const stopRecording = () => {
     if (recorderState.mediaRecorder && recorderState.isRecording) {
+      callback("녹음을 중지합니다...");
       recorderState.mediaRecorder.stop();
       setRecorderState((prev) => ({ ...prev, isRecording: false }));
     }
   };
 
-  // 컴포넌트 언마운트 시 정리
+  // cleanup
   useEffect(() => {
     return () => {
       if (recorderState.mediaRecorder) {
