@@ -40,17 +40,48 @@ const ChatMessage = () => {
   const [userInput, setUserInput] = useState<string>("");
   const { messages, sendMessage } = useChatMessages(situation, level);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
-  const handleTranscribedText = async (text: string) => {
+  // const handleTranscribedText = async (text: string) => {
+  //   try {
+  //     // 음성으로 변환된 텍스트를 메세지로 처리
+  //     await sendMessage(text);
+  //   } catch (error) {
+  //     console.log("메세지 전송 실패: ", error);
+  //   }
+  // };
+
+  // const { isRecording, startRecording, stopRecording } = useAudioRecorder(handleTranscribedText);
+
+  // // 전송 버튼
+  // const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  //   e.preventDefault();
+  //   if (!userInput.trim()) return;
+
+  //   try {
+  //     sendMessage(userInput);
+  //     console.log("messages", messages);
+  //     setUserInput("");
+  //   } catch (error) {
+  //     console.log("메세지 전송 실패: ", error);
+  //   }
+  // };
+
+  // 녹음 버튼 처리
+  const handleRecordingClick = async () => {
     try {
-      // 음성으로 변환된 텍스트를 메세지로 처리
-      await sendMessage(text);
+      if (isRecording) {
+        const text = await stopRecording();
+        if (text.trim()) {
+          await sendMessage(text);
+        }
+      } else {
+        await startRecording();
+      }
     } catch (error) {
-      console.log("메세지 전송 실패: ", error);
+      console.log("녹음 실패: ", error);
     }
   };
-
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
   // 전송 버튼
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -59,7 +90,6 @@ const ChatMessage = () => {
 
     try {
       sendMessage(userInput);
-      console.log("messages", messages);
       setUserInput("");
     } catch (error) {
       console.log("메세지 전송 실패: ", error);
@@ -146,7 +176,7 @@ const ChatMessage = () => {
         isRecording={isRecording}
         onSubmit={handleSubmit}
         onStartRecording={startRecording}
-        onStopRecording={stopRecording}
+        onStopRecording={handleRecordingClick}
         onEndChat={handleEndChat}
       />
     </div>
