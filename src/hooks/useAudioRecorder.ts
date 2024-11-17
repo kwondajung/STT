@@ -45,7 +45,7 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
 
       // MIME 타입 설정 (iOS는 wav 사용)
       const { isIOS: isIOSDevice } = checkEnvironment();
-      let mimeType = isIOSDevice ? "audio/wav" : "audio/webm";
+      const mimeType = isIOSDevice ? "audio/wav" : "audio/webm";
 
       callback(`선택된 오디오 형식: ${mimeType}`);
 
