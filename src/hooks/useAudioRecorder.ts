@@ -1,13 +1,12 @@
 import { AudioRecorderState } from "@/app/types/chatBotType/chatBotType";
 import { convertSpeechToText } from "@/utils/chatbot/chatBotApi";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import RecordRTC, { StereoAudioRecorder } from "recordrtc";
 
 export const useAudioRecorder = (callback: (text: string) => void) => {
-  const [recorderState, setRecorderState] = useState<AudioRecorderState>({
-    isRecording: false,
-    mediaRecorder: null,
-    chunks: []
-  });
+  const [isRecording, setIsRecording] = useState(false);
+  const recorderRef = useRef<RecordRTC | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const checkEnvironment = () => {
     const userAgent = navigator.userAgent.toLowerCase();
@@ -42,94 +41,88 @@ export const useAudioRecorder = (callback: (text: string) => void) => {
         audio: getAudioConstraints()
       });
 
+      streamRef.current = stream;
       callback("마이크 권한 획득 성공!");
 
-      // 원래 코드의 MIME 타입 처리로 복귀
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/mp4")
-        ? "audio/mp4"
-        : "audio/ogg";
-      callback(`선택된 오디오 형식: ${mimeType}`);
-
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      const chunks: Blob[] = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunks.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        try {
-          const audioBlob = new Blob(chunks, { type: mimeType });
-
-          if (audioBlob.size < 1000) {
-            callback("녹음된 내용이 너무 짧습니다. 다시 시도해주세요.");
-            return;
-          }
-
-          const audioFile = new File([audioBlob], "audio.webm", {
-            type: mimeType
-          });
-
-          callback("음성을 텍스트로 변환 중...");
-
-          const text = await convertSpeechToText(audioFile);
-
-          if (text && text.trim() && !text.includes("MBC 뉴스")) {
-            callback(text);
-          } else {
-            callback("음성 인식에 실패했습니다. 다시 시도해주세요.");
-          }
-        } catch (error) {
-          callback(`음성 변환 중 오류: ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
-        } finally {
-          mediaRecorder.stream.getTracks().forEach((track) => track.stop());
-        }
-      };
-
-      mediaRecorder.start(1000);
-      callback("녹음이 시작되었습니다.");
-
-      setRecorderState({
-        isRecording: true,
-        mediaRecorder,
-        chunks
+      const recorder = new RecordRTC(stream, {
+        type: "audio",
+        mimeType: "audio/wav",
+        recorderType: StereoAudioRecorder,
+        numberOfAudioChannels: 1,
+        desiredSampRate: 16000,
+        timeSlice: 1000
       });
+
+      recorderRef.current = recorder;
+      recorder.startRecording();
+      callback("녹음이 시작되었습니다.");
+      setIsRecording(true);
     } catch (error) {
       if (error instanceof Error) {
         callback(`마이크 접근 오류: ${error.message}`);
       } else {
         callback("마이크 접근에 실패했습니다. 브라우저 권한을 확인해주세요.");
       }
-      setRecorderState({
-        isRecording: false,
-        mediaRecorder: null,
-        chunks: []
-      });
+      setIsRecording(false);
     }
   };
 
   const stopRecording = () => {
-    if (recorderState.mediaRecorder && recorderState.isRecording) {
-      callback("녹음을 중지합니다...");
-      recorderState.mediaRecorder.stop();
-      setRecorderState((prev) => ({ ...prev, isRecording: false }));
-    }
+    if (!recorderRef.current || !isRecording) return;
+
+    callback("녹음을 중지합니다...");
+
+    recorderRef.current.stopRecording(async () => {
+      try {
+        const blob = recorderRef.current?.getBlob();
+        if (!blob) {
+          callback("녹음 데이터를 가져올 수 없습니다.");
+          return;
+        }
+
+        if (blob.size < 1000) {
+          callback("녹음된 내용이 너무 짧습니다. 다시 시도해주세요.");
+          return;
+        }
+
+        const audioFile = new File([blob], "audio.wav", {
+          type: "audio/wav"
+        });
+
+        callback("음성을 텍스트로 변환 중...");
+        const text = await convertSpeechToText(audioFile);
+
+        if (text && text.trim() && !text.includes("MBC 뉴스")) {
+          callback(text);
+        } else {
+          callback("음성 인식에 실패했습니다. 다시 시도해주세요.");
+        }
+      } catch (error) {
+        callback(`음성 변환 중 오류: ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
+      } finally {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+        recorderRef.current = null;
+        setIsRecording(false);
+      }
+    });
   };
 
   useEffect(() => {
     return () => {
-      if (recorderState.mediaRecorder) {
-        recorderState.mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (recorderRef.current) {
+        recorderRef.current.destroy();
       }
     };
-  }, [recorderState.mediaRecorder]);
+  }, []);
 
   return {
-    isRecording: recorderState.isRecording,
+    isRecording,
     startRecording,
     stopRecording
   };
