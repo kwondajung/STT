@@ -50,7 +50,7 @@ const ChatMessage = () => {
     }
   };
 
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder(handleTranscribedText);
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
   // 전송 버튼
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
